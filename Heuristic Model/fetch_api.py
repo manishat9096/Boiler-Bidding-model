@@ -100,30 +100,6 @@ def entsoe_api(start_date, frequency, period):
     df = merge_all(start_all, end_all, key_entso, frequency)
     return df
 
-# def energinet_api():
-#     p = {
-#             "limit": 0,
-#             "start": datetime(year=2024, month = 11, day = 5).strftime("%Y-%m-%d"),
-#             "end": datetime(year=2024, month = 11, day = 8).strftime("%Y-%m-%d")
-#             # "end": datetime.now().strftime("%Y-%m-%d")
-#         }
-#     response = requests.get(url="https://api.energidataservice.dk/dataset/PowerSystemRightNow", params=p)
-
-#     result = response.json()
-
-#     for k, v in result.items():
-#         print(k, v)
-
-#     records = result.get('records', [])
-#     time_utc = 'HourUTC'
-#     imbalance_prices = pd.DataFrame(records)
-#     imbalance_prices = imbalance_prices[[ 'Minutes1UTC', 'Minutes1DK', 'aFRR_ActivatedDK1', 'aFRR_ActivatedDK2','ImbalanceDK1', 'ImbalanceDK2']]
-
-
-#     import requests
-
-
-
 def energinet_api(dataset, start_date_utc, end_date_utc = None):
     if end_date_utc is None:
         end_date_utc = datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
