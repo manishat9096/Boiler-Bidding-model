@@ -6,12 +6,13 @@ class ARXSimulator:
     def __init__(self, A, B, y_init, u_init):
         self.A = np.array(A)
         self.B = np.array(B)
-        self.y_lags = len(A)   
-        self.u_lags = len(B)  
-        self.y_past_sim = np.array(y_init, dtype=float)  
+        self.y_lags = len(A)
+        self.u_lags = len(B)
+        self.y_past_sim = np.array(y_init, dtype=float)
         self.u_past_sim = np.array(u_init, dtype=float) 
 
     def ARX_model(self):
+
         y_term = -sum(self.A[i] * self.y_past_sim[-(i+1)] for i in range(self.y_lags))
         u_term = sum(self.B[i] * self.u_past_sim[-(i+1)] for i in range(self.u_lags))
         return y_term + u_term
@@ -33,7 +34,7 @@ if __name__ == '__main__':
     A = [-1.04411331, 0.00942735,  0.00399007,  0.05331014] 
     B = [-0.00091497,  0.14029288]  
     y_init = [20, 20, 20, 20]  
-    u_init = [0, 0]  
+    u_init = [0, 0]
 
     ARX = ARXSimulator(A, B, y_init, u_init)
 
