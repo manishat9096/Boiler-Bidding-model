@@ -36,9 +36,6 @@ class ModelForecast:
         self.split_ts()
         self.fit_model()
         
-        # print(f"MSE: {mae(series_air, pred):.2f}")
-        # print(f"RMSE: {mae(series_air, pred):.2f}")
-
         gp_backtest_forecasts = self.model.historical_forecasts(
             series=concatenate([self.target_train, self.target_test], axis=0),
             past_covariates = concatenate([self.past_covar_train, self.past_covar_test], axis=0),
@@ -53,7 +50,10 @@ class ModelForecast:
             last_points_only=False,
             verbose=True
         )
-        # print(f"MAE: {mae(concatenate([self.target_train, self.target_test], axis=0), concatenate(gp_backtest_forecasts, axis=0)):.2f}")
+
+        for metric in [mae, mse, rmse]:
+            print(f"{metric} on the test set: {metric(self.target_test, concatenate(gp_backtest_forecasts, axis=0)):.2f}")
+
         gp_backtest_forecasts_df = pd.DataFrame()
         for idx, forecast in enumerate(gp_backtest_forecasts):
             forecast_df = forecast.pd_dataframe()

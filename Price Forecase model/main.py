@@ -5,14 +5,17 @@ from pre_processing_model import PreProcessing
 from forecast_model import ModelForecast
 from sklearn.metrics import mean_absolute_error, mean_squared_error, root_mean_squared_error
 from darts.metrics import mae, mse, rmse
+import joblib
 
-
-start_date = '2025-02-25'
-end_date = '2025-02-28'
+start_date = '2025-03-14'
+end_date = '2025-03-15'
 # load data from energinet api (default resolution 1 min) and convert to Timeseries
 preprocess_data = PreProcessing(start_date, end_date)
 preprocess_data.fetch_data()
 afrr_energy_UP_ts, afrr_energy_DOWN_ts, past_features_UP_ts, past_features_DOWN_ts, future_features_UP_ts, future_features_DOWN_ts  = preprocess_data.df_to_ts()
+output_chunk_length = 30 #minutes
+
+model = 'UP'
 
 # define a LR Regressor model
 # output_chunk_length = 48
@@ -29,36 +32,49 @@ rf_model = RandomForest(
     lags_future_covariates = [-1],
     output_chunk_length = 48,
     n_estimators = 100,
-    # criterion="absolute_error",
+    max_depth = 10
 )
 
 # use the forecast model to backtest on the timeseries data
 forecast = ModelForecast(
     model=rf_model,
-    split_size=0.4,
-    forecast_horizon = 15, #minutes step
-    stride = 15, #minutes
+    split_size=0.5,
+    forecast_horizon = 30, #minutes step
+    stride = 30, #minutes
     target=afrr_energy_UP_ts,
     past_covar= past_features_UP_ts,
     future_covar=future_features_UP_ts
 )
 
 output_df, output_ts = forecast.backtest_historical_forecast()
+
+# re-normalise the output dataset
+if model == 'UP':
+    scaler = joblib.load('scaler_UP.pkl')
+    actual_ts = scaler.inverse_transform(afrr_energy_UP_ts)
+    forecasted_ts = scaler.inverse_transform(output_ts)
+elif model == 'DOWN':
+    scaler = joblib.load('scaler_DOWN.pkl')
+    actual_ts = scaler.inverse_transform(afrr_energy_DOWN_ts)
+    forecasted_ts = scaler.inverse_transform(output_ts)
+
+Y_df = pd.merge(actual_ts.pd_dataframe(), forecasted_ts.pd_dataframe(), left_index=True, right_index=True, how='right')
+
+# error metrics
+print(f"MAE_ts: {mae(actual_ts, forecasted_ts):.2f}")
+print(f"MSE_ts: {mse(actual_ts, forecasted_ts):.2f}")
+print(f"RMSE_ts: {rmse(actual_ts, forecasted_ts):.2f}")
+
+print("MAE:", mean_absolute_error(Y_df['aFRR_UpActivatedPriceEUR_x'], Y_df['aFRR_UpActivatedPriceEUR_y']))
+print("MSE:", mean_squared_error(Y_df['aFRR_UpActivatedPriceEUR_x'], Y_df['aFRR_UpActivatedPriceEUR_y']))
+print("RMSE:", root_mean_squared_error(Y_df['aFRR_UpActivatedPriceEUR_x'], Y_df['aFRR_UpActivatedPriceEUR_y']))
+
+
 # plot the results
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=output_df.index, y=output_df.iloc[:,0], mode='lines', name='Activation Price Up'))
-fig.add_trace(go.Scatter(x=output_df.index, y=output_df.iloc[:,1], mode='lines', name='Actual Price UP'))
-fig.update_layout(title='Time vs Activation Price Up & Actual Price Up',xaxis_title='Time',yaxis_title='Price (EUR/MWh)',legend_title='Legend',template='plotly_white')
+fig.add_trace(go.Scatter(x=Y_df.index, y=Y_df['aFRR_UpActivatedPriceEUR_y'], mode='lines', name='Forecasted Price Up'))
+fig.add_trace(go.Scatter(x=Y_df.index, y=Y_df['aFRR_UpActivatedPriceEUR_x'], mode='lines', name='Actual Price UP'))
+fig.update_layout(title='Forecast vs Actual price {model}',xaxis_title='Time',yaxis_title='Price (EUR/MWh)',legend_title='Legend',template='plotly_white')
 fig.show()
-
-print(f"MAE_ts: {mae(afrr_energy_UP_ts, output_ts):.2f}")
-print(f"MSE_ts: {mse(afrr_energy_UP_ts, output_ts):.2f}")
-print(f"RMSE_ts: {rmse(afrr_energy_UP_ts, output_ts):.2f}")
-
-print("MAE:", mean_absolute_error(output_df.iloc[:,0], output_df.iloc[:,1]))
-print("MSE:", mean_squared_error(output_df.iloc[:,0], output_df.iloc[:,1]))
-print("RMSE:", root_mean_squared_error(output_df.iloc[:,0], output_df.iloc[:,1]))

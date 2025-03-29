@@ -4,6 +4,7 @@ from fetch_api import entsoe_api, energinet_api
 from darts import TimeSeries
 from darts.dataprocessing import Pipeline
 from darts.dataprocessing.transformers import MissingValuesFiller, Scaler
+import joblib
 
 class PreProcessing:
     def __init__(self, start_date, end_date, resolution = '1min'):
@@ -11,7 +12,8 @@ class PreProcessing:
         self.end_date = end_date
         self.resolution = resolution
         self.df = None
-        self.pipeline = Pipeline([MissingValuesFiller(), Scaler()])
+        self.pipeline = Pipeline([MissingValuesFiller()])
+        self.scaler = Scaler()
 
     def fetch_data(self):
         # Fetch data from API and resample to a common resolution.
@@ -53,8 +55,8 @@ class PreProcessing:
         df = energinet_api('AfrrEnergyActivated', self.start_date, self.end_date)
         df = df.loc[df['PriceArea'] == 'DK1']
         df = self.process_df(df, 'ActivationTime', ['aFRR_UpActivatedPriceEUR','aFRR_DownActivatedPriceEUR'])
-        df['UP_activation'] = df['aFRR_UpActivatedPriceEUR'].notna().astype(int) # Binary Feature - Activation ON/OFF
-        df['DOWN_activation'] = df['aFRR_DownActivatedPriceEUR'].notna().astype(int) # Binary Feature - Activation ON/OFF
+        df['is_ActivatedUP'] = df['aFRR_UpActivatedPriceEUR'].notna().astype(int) # Binary Feature - Activation UP ON/OFF
+        df['is_ActivatedDown'] = df['aFRR_DownActivatedPriceEUR'].notna().astype(int) # Binary Feature - Activation DOWN ON/OFF
         return df
 
     def spotprices(self):
@@ -69,8 +71,8 @@ class PreProcessing:
         if self.df is None:
             raise ValueError("Data not loaded. Call fetch_data() first.")
         
-        past_features_UP_price = self.df[['aFRR_ActivatedDK1', 'UP_activation']]
-        past_features_DOWN_price = self.df[['aFRR_ActivatedDK1', 'DOWN_activation']]
+        past_features_UP_price = self.df[['aFRR_ActivatedDK1', 'is_ActivatedUP']]
+        past_features_DOWN_price = self.df[['aFRR_ActivatedDK1', 'is_ActivatedDown']]
 
         future_features_UP_price = self.df[['aFRR_UpCapPriceEUR', 'SpotPriceEUR']]
         future_features_DOWN_price = self.df[['aFRR_DownCapPriceEUR', 'SpotPriceEUR']]
@@ -82,13 +84,25 @@ class PreProcessing:
         past_features_DOWN = TimeSeries.from_dataframe(past_features_DOWN_price)
         future_features_UP = TimeSeries.from_dataframe(future_features_UP_price)
         future_features_DOWN = TimeSeries.from_dataframe(future_features_DOWN_price)
+        
+        target_UP= self.pipeline.fit_transform(target_UP)
+        target_DOWN= self.pipeline.fit_transform(target_DOWN)
+        past_features_UP=self.pipeline.fit_transform(past_features_UP)
+        past_features_DOWN=self.pipeline.fit_transform(past_features_DOWN)
+        future_features_UP=self.pipeline.fit_transform(future_features_UP)
+        future_features_DOWN=self.pipeline.fit_transform(future_features_DOWN)
 
-        return (self.pipeline.fit_transform(target_UP),
-                self.pipeline.fit_transform(target_DOWN),
-                self.pipeline.fit_transform(past_features_UP),
-                self.pipeline.fit_transform(past_features_DOWN),
-                self.pipeline.fit_transform(future_features_UP),
-                self.pipeline.fit_transform(future_features_DOWN)
+        scaled_target_UP = self.scaler.fit_transform(target_UP)
+        joblib.dump(self.scaler, 'scaler_UP.pkl')
+        scaled_target_DOWN = self.scaler.fit_transform(target_DOWN)
+        joblib.dump(self.scaler, 'scaler_DOWN.pkl')
+
+        return (scaled_target_UP,
+                scaled_target_DOWN,
+                self.scaler.fit_transform(past_features_UP),
+                self.scaler.fit_transform(past_features_DOWN),
+                self.scaler.fit_transform(future_features_UP),
+                self.scaler.fit_transform(future_features_DOWN)
                 )
 
 
