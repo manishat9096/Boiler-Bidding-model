@@ -112,7 +112,7 @@ if __name__ == '__main__':
     test_by_row = True
     if test_by_row == True:
         results = pd.DataFrame()
-        row = MTU_df.iloc[12]
+        row = MTU_df.iloc[0]
         lambda_cl_UP = row['aFRR_UpActivatedPriceEUR']
         lambda_cl_DOWN = row['aFRR_DownActivatedPriceEUR']
         spotprice = row['SpotPriceEUR']

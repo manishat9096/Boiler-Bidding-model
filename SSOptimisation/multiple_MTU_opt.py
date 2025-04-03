@@ -24,8 +24,8 @@ def load_values(df, start = 13, horizon = 8):
         print("Optimization was successful.")
         
         total_revenue = md.ObjVal  # Objective function value
-        total_bid_UP = [md.getVarByName(f"E_up[{t}]").x for t in range(horizon)]
-        total_bid_Down = [md.getVarByName(f"E_down[{t}]").x for t in range(horizon)]
+        total_bid_UP = [md.getVarByName(f"C_up[{t}]").x for t in range(horizon)]
+        total_bid_Down = [md.getVarByName(f"C_down[{t}]").x for t in range(horizon)]
         total_price_UP = [md.getVarByName(f"P_up[{t}]").x for t in range(horizon)]
         total_price_Down = [-md.getVarByName(f"P_down[{t}]").x for t in range(horizon)]
         total_activation = [md.getVarByName(f'u_Act[{t}]').x for t in range(horizon)]
@@ -36,14 +36,14 @@ def load_values(df, start = 13, horizon = 8):
         system_state = [system_data['Einit']] + system_state
         results_dict = {
             'Objective Value': total_revenue,
-            'Ebid Up (MWh)': total_bid_UP,
-            'Ebid Down (MWh)': total_bid_Down,
+            'Bid Up (MW)': total_bid_UP,
+            'Bid Down (MW)': total_bid_Down,
             'Pbid Up (Eur/MWh)': total_price_UP,
             'Pbid Down (Eur/MWh)': total_price_Down,
             'Activation 1 - Up 0 - Down': total_activation,
             'Cleared 1 - Yes 0 - No': total_cleared,
-            'Ebid Up Cleared (MWh)': bid_cleared_UP,
-            'Ebid Down Cleared (MWh)': bid_cleared_Down,
+            'Energy Up Cleared (MWh)': bid_cleared_UP,
+            'Energy Down Cleared (MWh)': bid_cleared_Down,
             'System state (MWh)': system_state
         }
         
@@ -81,6 +81,7 @@ def steady_state_multiple_MTU_OP(price_data, system_data, horizon):
     
     T = list(range(horizon)) # Horizon = 8 MTU
     M = 1e6
+    deltaT = 15/60
 
     # parameters
     lambda_cl_UP = price_data['aFRR_UpActivatedPriceEUR']
@@ -95,32 +96,32 @@ def steady_state_multiple_MTU_OP(price_data, system_data, horizon):
     Einit = system_data['Einit']
 
     # initalise the decision variables
-    E_up = model.addVars(T, lb = 0, vtype = GRB.INTEGER, name = 'E_up')
-    E_down = model.addVars(T, lb = 0, vtype = GRB.INTEGER, name = 'E_down')
+    C_up = model.addVars(T, lb = 0, ub = 12, vtype = GRB.INTEGER, name = 'C_up')
+    C_down = model.addVars(T, lb = 0, ub = 12, vtype = GRB.INTEGER, name = 'C_down')
     P_up = model.addVars(T, lb = 0, vtype = GRB.CONTINUOUS, name = 'P_up')
     P_down = model.addVars(T, lb = 0, vtype = GRB.CONTINUOUS, name = 'P_down')
     u = model.addVars(T, vtype = GRB.BINARY, name = 'u_Act')
     beta = model.addVars(T, vtype = GRB.BINARY, name = 'ifCleared')
 
     # To track the state of the system
-    Esys = model.addVars(T, lb = Emin, ub = Emax, vtype = GRB.INTEGER, name = 'Esys')
+    Esys = model.addVars(T, lb = Emin, ub = Emax, vtype = GRB.CONTINUOUS, name = 'Esys')
     
     # auxillary variable
-    Ecl_up = model.addVars(T, lb = 0, vtype = GRB.INTEGER, name = 'Ecleared_up')
-    Ecl_down = model.addVars(T, lb = 0, vtype = GRB.INTEGER, name = 'Ecleared_down')
+    Ecl_up = model.addVars(T, lb = 0, ub = 3, vtype = GRB.INTEGER, name = 'Ecleared_up')
+    Ecl_down = model.addVars(T, lb = 0, ub = 3, vtype = GRB.INTEGER, name = 'Ecleared_down')
 
     # Constraints on the system limits
     for t in T:
         # Bid MWh is equal to or higher than the DA Capacity schedule
-        model.addConstr(E_up[t] >= (Cap_UP[t] * 0.25), name = f'UP_Capacity_schedule_limit{t}')
-        model.addConstr(E_down[t] >= (Cap_DOWN[t] * 0.25), name = f'DOWN_Capacity_schedule_limit{t}')
+        model.addConstr(C_up[t] >= Cap_UP[t], name = f'UP_Capacity_schedule_limit{t}')
+        model.addConstr(C_down[t] >= Cap_DOWN[t], name = f'DOWN_Capacity_schedule_limit{t}')
     
     # Bid Qty (MWh) is  less than or equal to the available Mwh
-    model.addConstr(Einit - E_up[0] >= Emin, name = f'Available_Mwh_UP_{0}')
-    model.addConstr(Einit + E_down[0] <= Emax, name = f'Available_Mwh_Down_{0}')
+    model.addConstr(Einit - (deltaT*C_up[0]) >= Emin, name = f'Available_Mwh_UP_{0}')
+    model.addConstr(Einit + (deltaT*C_down[0]) <= Emax, name = f'Available_Mwh_Down_{0}')
     for t in T[1:]:
-        model.addConstr(Esys[t-1] - E_up[t] >= Emin, name = f'Available_Mwh_UP_{t}')
-        model.addConstr(Esys[t-1] + E_down[t] <= Emax, name = f'Available_Mwh_Down_{t}')
+        model.addConstr(Esys[t-1] - (deltaT*C_up[t]) >= Emin, name = f'Available_Mwh_UP_{t}')
+        model.addConstr(Esys[t-1] + (deltaT*C_down[t]) <= Emax, name = f'Available_Mwh_Down_{t}')
 
     # Constraint for the System state after MTU activation
     model.addConstr(Einit + (Ecl_down[0] * (1 - u[0]) - Ecl_up[0] * u[0]) * alpha[0] - Esys[0] == 0, name = f'System_state_after_{0}')
@@ -140,13 +141,13 @@ def steady_state_multiple_MTU_OP(price_data, system_data, horizon):
  
     #constraint to enforce auxillary variables
     for t in T:
-        model.addConstr(Ecl_up[t] <= E_up[t], name = f'Ecleared_UP_a_{t}')
+        model.addConstr(Ecl_up[t] <= (deltaT*C_up[t]), name = f'Ecleared_UP_a_{t}')
         model.addConstr(Ecl_up[t] <= M * beta[t], name = f'Ecleared_UP_b_{t}')
-        model.addConstr(Ecl_up[t] >= E_up[t] - M * (1 - beta[t]), name = f'Ecleared_UP_c_{t}')
+        model.addConstr(Ecl_up[t] >= (deltaT*C_up[t]) - M * (1 - beta[t]), name = f'Ecleared_UP_c_{t}')
 
-        model.addConstr(Ecl_down[t] <= E_down[t], name = f'Ecleared_Down_a_{t}')
+        model.addConstr(Ecl_down[t] <= (deltaT*C_down[t]), name = f'Ecleared_Down_a_{t}')
         model.addConstr(Ecl_down[t] <= M * beta[t], name = f'Ecleared_Down_b_{t}')
-        model.addConstr(Ecl_down[t] >= E_down[t] - M * (1 - beta[t]), name = f'Ecleared_Down_c_{t}')
+        model.addConstr(Ecl_down[t] >= (deltaT*C_down[t]) - M * (1 - beta[t]), name = f'Ecleared_Down_c_{t}')
 
     # define the objective function
     Z = gp.quicksum((lambda_cl_UP[t] * Ecl_up[t] * alpha[t] * u[t]) + 
@@ -157,3 +158,28 @@ def steady_state_multiple_MTU_OP(price_data, system_data, horizon):
     model.optimize()
 
     return model
+
+if __name__ == '__main__':
+    horizon = 8
+    activation_rate = 0.2
+
+    # load the data from csv files
+    aFRR_energy_prices = pd.read_csv('aFRRenergymarket_2025-03-10_to_2025-03-15.csv')
+    spotprices = pd.read_csv('spotprices_2025-03-10_to_2025-03-15.csv')
+    aFRR_energy_prices = aFRR_energy_prices.fillna(0)
+    aFRR_energy_prices['SecondUTC'] = pd.to_datetime(aFRR_energy_prices['SecondUTC'])
+    aFRR_energy_prices = aFRR_energy_prices.drop(columns=['PriceArea'])
+    aFRR_energy_prices = aFRR_energy_prices.set_index('SecondUTC').resample('4s').mean().reset_index()
+    spotprices['HourUTC'] = pd.to_datetime(spotprices['HourUTC'])
+    df = pd.merge(aFRR_energy_prices, spotprices[['HourUTC','SpotPriceEUR']], how='left', left_on='SecondUTC', right_on='HourUTC')
+    df = df.drop(columns=['HourUTC'])
+    df['SpotPriceEUR'] =  df['SpotPriceEUR'].ffill()
+    MTU_df = df[df['SecondUTC'].dt.second == 0]
+    MTU_df = MTU_df[MTU_df['SecondUTC'].dt.minute % 15 == 0]
+    MTU_df.reset_index(drop = True, inplace = True)
+    MTU_df['Total MWh activated'] = activation_rate
+    MTU_df['UpCapacityBid'] = 0
+    MTU_df['DownCapacityBid'] = 0
+
+    output, md = load_values(MTU_df, start = 20, horizon = horizon)
+    output_df = pd.DataFrame.from_dict(dict([(k, pd.Series(v)) for k, v in output.items()]))
