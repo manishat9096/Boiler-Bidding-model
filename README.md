@@ -8,12 +8,14 @@ Run the main script:
 ```bash
 python main.py
 ```
-main.py is the entry point and depending on the case selected it will call:
-  recurssive_RTO.py - for recursive closed-loop optimisation,
-  OL_nonrecurssive_RTO.py - for open-loop optimisation, and
-  rt_op_modified.py - which defines the Gurobi optimisation model and handles data loading.
-Results are written to the Simulation Output/ folder and can be visualised with Plotly.
 
+main.py is the entry point and depending on the case selected it will call:  
+
+- `recurssive_RTO.py` – for recursive closed-loop optimisation  
+- `OL_nonrecurssive_RTO.py` – for open-loop optimisation  
+- `rt_op_modified.py` – defines the Gurobi optimisation model and handles data loading  
+
+Results are written to the `Simulation Output/` folder and can be visualised with Plotly.
 
  
 
